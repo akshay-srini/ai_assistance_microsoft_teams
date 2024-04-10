@@ -28,9 +28,9 @@ def chatbot(request):
             access_token_id = access_token
             response = access_token
         elif message == 'get the user details':
-            print(access_token_id)
+            # print(access_token_id)
 
-            user_details = get_access_token(access_token_id)
+            user_details = get_access_token()
             response = user_details
         else:
         # response = PdfReader.extract_text_from_pdf(pdf_file_path)
