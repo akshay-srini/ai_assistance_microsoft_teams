@@ -288,9 +288,10 @@
 
 .message {
   margin-bottom: 10px;
-  padding: 5px 10px;
+  padding: 5px 40px;
   border-radius: 5px;
   max-width: 70%;
+  font-size: 14px;
 }
 
 .message.user {
@@ -299,7 +300,7 @@
 }
 
 .message.bot {
-  background-color: #c8e6c9; /* Light green for bot messages */
+  background-color: #d2dfe7; /* Light green for bot messages */
 }
 
 form {

@@ -53,7 +53,10 @@ def ask_gemini(user_input):
     convo = model.start_chat(history=[])
 
     # Send the user input as a message
-    convo.send_message(user_input)
+    message = f"{user_input} convert this to user readable conversational message"
+    print("in_gemini", message)
+    convo.send_message(message)
+
 
     # Get and return the latest response from the conversation
     return convo.last.text

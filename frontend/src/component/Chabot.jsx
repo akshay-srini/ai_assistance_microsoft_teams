@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import send from "../images/send.png";
 import axios from "axios";
+import ReactMarkdown from 'react-markdown';
+
 
 export default function Chatbot() {
   const [messages, setMessages] = useState([]);
@@ -41,9 +43,9 @@ export default function Chatbot() {
     <section className="chatbot-container-section">
       <div className="chat-window">
         {messages.map((message, index) => (
-          <div key={index} className={`message ${message.fromUser ? 'user' : 'bot'}`}>
+          <ReactMarkdown key={index} className={`message ${message.fromUser ? 'user' : 'bot'}`}>
             {message.text}
-          </div>
+          </ReactMarkdown>
         ))}
       </div>
       <form onSubmit={handleSubmit}>
