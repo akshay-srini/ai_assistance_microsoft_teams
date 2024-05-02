@@ -9,7 +9,7 @@ export default function Chatbot() {
   const [input, setInput] = useState('');
 
   const handleInputChange = (event) => {
-    setInput(event.target.value);
+    setInput(event.target.value); 
   };
 
   const handleSubmit = async (event) => {

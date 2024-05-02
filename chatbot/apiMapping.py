@@ -1,20 +1,83 @@
 import re
 import requests
+from .teamsidMapping import teamsidMapping
+from .chatidMapping import chatidMapping
+import difflib
 
 # Define the API endpoint mappings
 api_mappings = {
     'teams-joined': {'endpoint': 'https://graph.microsoft.com/v1.0/me/joinedTeams', 'method': 'GET'},
-    'channels': {'endpoint': 'https://graph.microsoft.com/v1.0/teams/{teams-id}/channels', 'method': 'GET'},
-    'members': {'endpoint': 'https://graph.microsoft.com/v1.0/teams/{teams-id}/members', 'method': 'GET'},
+    'channels': {'endpoint': 'https://graph.microsoft.com/v1.0/teams/{teams_id}/channels', 'method': 'GET'},
+    'members': {'endpoint': 'https://graph.microsoft.com/v1.0/teams/{teams_id}/members', 'method': 'GET'},
     'drive lists': {'endpoint': 'https://graph.microsoft.com/v1.0/me/drive/recent', 'method': 'GET'},
     'tasks': {'endpoint': 'https://graph.microsoft.com/v1.0/me/todo/lists/AAMkAGM2YzVlNGM1LWYwZmYtNDg2OS1hNThlLWI3OGU3OGQ2YjUyMgAuAAAAAABmFZHVSi48R5PIkGcDt626AQCUKxx8eWawR7UHOV9lmUikAAAAAAESAAA=/tasks', 'method': 'GET'},
     'new task': {'endpoint': 'https://graph.microsoft.com/v1.0/me/todo/lists/AAMkAGM2YzVlNGM1LWYwZmYtNDg2OS1hNThlLWI3OGU3OGQ2YjUyMgAuAAAAAABmFZHVSi48R5PIkGcDt626AQCUKxx8eWawR7UHOV9lmUikAAAAAAESAAA=/tasks', 'method': 'POST'},
-    'create teams': {'endpoint': 'https://graph.microsoft.com/v1.0/teams', 'method': 'POST'}
+    'create teams': {'endpoint': 'https://graph.microsoft.com/v1.0/teams', 'method': 'POST'},
+    'group-chats': {'endpoint': 'https://graph.microsoft.com/v1.0/chats', 'method': 'GET'},
+    'chat': {'endpoint': 'https://graph.microsoft.com/v1.0/{chat_id}/messages', 'method': 'GET'},
+    'message': {'endpoint': 'https://graph.microsoft.com/v1.0/{chat_id}/messages', 'method': 'POST'}
 }
 
 # Additional keywords for GET and POST methods
 get_keywords = ['get', 'give', 'fetch', 'provide']
 post_keywords = ['post', 'send', 'save', 'create','add']
+
+# Initialize an empty dictionary to store display names and ids
+data = teamsidMapping()
+teams_dict = {}
+# Iterate through the teams data and store display names and ids in the dictionary
+for team in data['value']:
+    teams_dict[team['displayName']] = team['id']
+
+chatData = chatidMapping()
+chat_dict = {}
+# Iterate through the teams data and store display names and ids in the dictionary
+for chat in chatData['value']:
+    chat_dict[chat['topic']] = chat['id']
+
+
+
+
+def get_team_id(team_name):
+    matches = difflib.get_close_matches(team_name, teams_dict.keys(), n=1, cutoff=0.6)
+    if matches:
+        print("teams_dict[matches[0]]",teams_dict[matches[0]])
+        return teams_dict[matches[0]]
+    else:
+        return None
+
+def get_chat_id(chat_name):
+    matches = difflib.get_close_matches(chat_name, chat_dict.keys(), n=1, cutoff=0.6)
+    print("came here")
+    if matches:
+        print("chat_dict[matches[0]]",chat_dict[matches[0]])
+        return chat_dict[matches[0]]
+    else:
+        return None
+
+
+def receive_message_from_user(user_input):
+    # Parse the input to extract the task body if it's a POST request for adding a new task
+    if 'new task' in user_input.lower() and any(keyword in user_input.lower() for keyword in post_keywords):
+        # Extracting the task body from the input message
+        task_body = user_input.split('-')[-1].strip()
+        return task_body # Return task body and HTTP method POST
+    
+    elif 'members' in user_input.lower() and any(keyword in user_input.lower() for keyword in api_mappings.keys()):
+        # Extracting the task body from the input message
+        teams_name = user_input.split('-')[-1].strip()
+        print(teams_name)
+        return teams_name # Return task body and HTTP method POST
+    
+    elif ('chat' in user_input.lower() or 'message' in user_input.lower()) and any(keyword in user_input.lower() for keyword in api_mappings.keys()):
+        # Extracting the task body from the input message
+        chat_name = user_input.split('-')[-1].strip()
+        print("chat_name", chat_name)
+        return chat_name # Return task body and HTTP method POST
+    else:
+        return user_input # Return the user input and HTTP method GET
+    
+    
 
 def parse_query(query):
     # Convert query to lowercase for case-insensitive matching
@@ -41,10 +104,21 @@ def parse_query(query):
             main_keyword = keyword
     
     # Extract ID if present
-    id_match = re.search(r'\b\d+\b', query)
-    if id_match:
-        id_value = id_match.group()
-    print(method_keyword, main_keyword, id_value)
+    # id_match = re.search(r'\b\d+\b', query)
+    # if id_match:
+    #     id_value = id_match.group()
+    if main_keyword == 'members':
+        team_name = receive_message_from_user(query)
+        id_value = get_team_id(team_name)
+        print("team name and id_value",team_name,id_value)
+
+    elif main_keyword == 'chat' or main_keyword == 'message':
+        print("came here")
+        chat_name = receive_message_from_user(query)
+        id_value = get_chat_id(chat_name)
+        print("chat name and id_value",chat_name,id_value)
+
+    print(method_keyword, main_keyword, id_value) 
     return method_keyword, main_keyword, id_value
 
 def match_query_to_api(method_keyword, main_keyword, id_value):
@@ -54,17 +128,23 @@ def match_query_to_api(method_keyword, main_keyword, id_value):
     
     endpoint = api_mappings[main_keyword]['endpoint']
     method = api_mappings[main_keyword]['method']
+    print("before function")
+    if '{teams_id}' in endpoint:
+        endpoint = endpoint.replace('{teams_id}', id_value)
+        
     
-    # Replace {teams-id} or {list_id} placeholder if present
-    if '{teams-id}' in endpoint and id_value:
-        endpoint = endpoint.replace('{teams-id}', id_value)
-    elif '{list_id}' in endpoint and id_value:
+    elif '{chat_id}' in endpoint:
+        endpoint = endpoint.replace('{chat_id}', id_value)
+
+        
+    elif '{list_id}' in endpoint:
         endpoint = endpoint.replace('{list_id}', id_value)
-    print(endpoint, method)
+       
+    print('endpoint', endpoint)
     return endpoint, method
 
-def call_api(endpoint, method, body=None):
-    access_token = 'eyJ0eXAiOiJKV1QiLCJub25jZSI6ImpidDB0cWxMdGsyWHZhSk5OdmQzbkpRcHdnVU1sczYyRlZFRVEtbXhUbEkiLCJhbGciOiJSUzI1NiIsIng1dCI6InEtMjNmYWxldlpoaEQzaG05Q1Fia1A1TVF5VSIsImtpZCI6InEtMjNmYWxldlpoaEQzaG05Q1Fia1A1TVF5VSJ9.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJpc3MiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC82YjhiODI5Ni1iZGZmLTRhZDgtOTNhZC04NGJjYmYzODQyZjUvIiwiaWF0IjoxNzEyOTE1OTAxLCJuYmYiOjE3MTI5MTU5MDEsImV4cCI6MTcxMzAwMjYwMSwiYWNjdCI6MCwiYWNyIjoiMSIsImFpbyI6IkFWUUFxLzhXQUFBQXFTOTB5SVk1VTNKNUdJRVY3VGZSUlJ6Rnl6dEtzNlN3NGVKSDNqRHFibWtrckIrSDJ0dlVYTnFqb0o5b1k0d0VTZTBtZFhxMFphZlg0NjhKU3hPM0ZNTld2UHpPSGNKQ24wSkFsOE5pdGxZPSIsImFtciI6WyJwd2QiLCJtZmEiXSwiYXBwX2Rpc3BsYXluYW1lIjoiR3JhcGggRXhwbG9yZXIiLCJhcHBpZCI6ImRlOGJjOGI1LWQ5ZjktNDhiMS1hOGFkLWI3NDhkYTcyNTA2NCIsImFwcGlkYWNyIjoiMCIsImZhbWlseV9uYW1lIjoiMjBCSVMwMDciLCJnaXZlbl9uYW1lIjoiQWtzaGF5IFMiLCJpZHR5cCI6InVzZXIiLCJpcGFkZHIiOiIyNDA5OjQwZjQ6MzQ6M2E1NDphYzkzOjIyNGQ6MTAzZTo4NjExIiwibmFtZSI6IkFrc2hheSBTIC4gMjBCSVMwMDciLCJvaWQiOiI4MmIyNDQxZi00ODQ5LTRmZGYtYTdmNC02N2Y1YzhhNTVkYmIiLCJwbGF0ZiI6IjUiLCJwdWlkIjoiMTAwMzIwMDBGNTRDNTJBMSIsInJoIjoiMC5BVW9BbG9LTGFfLTkyRXFUcllTOHZ6aEM5UU1BQUFBQUFBQUF3QUFBQUFBQUFBQktBTmcuIiwic2NwIjoiQ2FsZW5kYXJzLlJlYWQgQ2FsZW5kYXJzLlJlYWQuU2hhcmVkIENhbGVuZGFycy5SZWFkQmFzaWMgQ2FsZW5kYXJzLlJlYWRXcml0ZSBDaGFubmVsLlJlYWRCYXNpYy5BbGwgQ2hhbm5lbFNldHRpbmdzLlJlYWQuQWxsIENoYXQuUmVhZCBDaGF0LlJlYWRCYXNpYyBDaGF0LlJlYWRXcml0ZSBEaXJlY3RvcnkuQWNjZXNzQXNVc2VyLkFsbCBEaXJlY3RvcnkuUmVhZC5BbGwgRGlyZWN0b3J5LlJlYWRXcml0ZS5BbGwgRWR1QXNzaWdubWVudHMuUmVhZCBFZHVBc3NpZ25tZW50cy5SZWFkQmFzaWMgRWR1QXNzaWdubWVudHMuUmVhZFdyaXRlIEVkdUFzc2lnbm1lbnRzLlJlYWRXcml0ZUJhc2ljIEVkdVJvc3Rlci5SZWFkQmFzaWMgRmlsZXMuUmVhZCBGaWxlcy5SZWFkLkFsbCBGaWxlcy5SZWFkV3JpdGUgRmlsZXMuUmVhZFdyaXRlLkFsbCBHcm91cC5SZWFkLkFsbCBHcm91cC5SZWFkV3JpdGUuQWxsIE1haWwuUmVhZCBNYWlsLlJlYWRCYXNpYyBNYWlsLlJlYWRXcml0ZSBvcGVuaWQgT3JnQ29udGFjdC5SZWFkLkFsbCBQZW9wbGUuUmVhZCBQZW9wbGUuUmVhZC5BbGwgUHJlc2VuY2UuUmVhZCBQcmVzZW5jZS5SZWFkLkFsbCBwcm9maWxlIFNpdGVzLlJlYWRXcml0ZS5BbGwgVGFza3MuUmVhZCBUYXNrcy5SZWFkV3JpdGUgVGVhbU1lbWJlci5SZWFkLkFsbCBVc2VyLlJlYWQgVXNlci5SZWFkV3JpdGUgVXNlci5SZWFkV3JpdGUuQWxsIFVzZXJBY3Rpdml0eS5SZWFkV3JpdGUuQ3JlYXRlZEJ5QXBwIGVtYWlsIiwic2lnbmluX3N0YXRlIjpbImttc2kiXSwic3ViIjoiY1VVU1JsTzY2VDRPNUNfd0J5dTc1R3pHLTc0QzlqQnFfMmFkT1VJMUZlbyIsInRlbmFudF9yZWdpb25fc2NvcGUiOiJBUyIsInRpZCI6IjZiOGI4Mjk2LWJkZmYtNGFkOC05M2FkLTg0YmNiZjM4NDJmNSIsInVuaXF1ZV9uYW1lIjoiYWtzaGF5LjIwaXNAa2N0LmFjLmluIiwidXBuIjoiYWtzaGF5LjIwaXNAa2N0LmFjLmluIiwidXRpIjoiTnVUSnY2LXNpVTJjM2lheDc4ekFBUSIsInZlciI6IjEuMCIsIndpZHMiOlsiY2YxYzM4ZTUtMzYyMS00MDA0LWE3Y2ItODc5NjI0ZGNlZDdjIiwiZjI4YTFmNTAtZjZlNy00NTcxLTgxOGItNmExMmYyYWY2YjZjIiwiNjkwOTEyNDYtMjBlOC00YTU2LWFhNGQtMDY2MDc1YjJhN2E4IiwiOWI4OTVkOTItMmNkMy00NGM3LTlkMDItYTZhYzJkNWVhNWMzIiwiYjc5ZmJmNGQtM2VmOS00Njg5LTgxNDMtNzZiMTk0ZTg1NTA5Il0sInhtc19jYyI6WyJDUDEiXSwieG1zX3NzbSI6IjEiLCJ4bXNfc3QiOnsic3ViIjoicUlfcnVyVUE1UXpMQ09GVU03QlRNOVZmY0p0SHRzQ2hWTjBRcGlveFMzSSJ9LCJ4bXNfdGNkdCI6MTU4ODg1NDczMX0.CRKy2xyrWEp4f_-CaiXWjS529jpaQQYFFVu0pnxrmoEGzFyUuhBGhIGoaZAwNdy00qvyjeLZ85w3w8opM35rDyreajTbz0zqKb6uqaVQERdaU3leKmyWU3YbONRaUbY1ny7y70-0I9LLGRfX9tlhLH0aNqlAzChgMJmQ9g5aTNt8V_SfQNRpoJ-uzVL3lINgBpGVvfJ1EB0jM4TnaCZsrpcuAOsudicWDmlBkK46Ktda4YL8XwmDYS_EzU6FKAwG_dPCqp5L63mGxxnIKtH7qvua1eR-WyELwczVWf_pQ1C0PynKYQmM_6ypZG7pesbbVbY41Ia8heu_nAUW_hmeog'
+def call_api(endpoint, method, body=None, teams_id=None):
+    access_token = "eyJ0eXAiOiJKV1QiLCJub25jZSI6InZGVW0tOGxWLXNQY0QxSEJabVd0VUdvNFVsNnpzaGF5R2M0WjRPMXpTTGsiLCJhbGciOiJSUzI1NiIsIng1dCI6InEtMjNmYWxldlpoaEQzaG05Q1Fia1A1TVF5VSIsImtpZCI6InEtMjNmYWxldlpoaEQzaG05Q1Fia1A1TVF5VSJ9.eyJhdWQiOiIwMDAwMDAwMy0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJpc3MiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC82YjhiODI5Ni1iZGZmLTRhZDgtOTNhZC04NGJjYmYzODQyZjUvIiwiaWF0IjoxNzEzMTE1Mjk5LCJuYmYiOjE3MTMxMTUyOTksImV4cCI6MTcxMzIwMjAwMCwiYWNjdCI6MCwiYWNyIjoiMSIsImFpbyI6IkFWUUFxLzhXQUFBQWZrNzRrVnB5SGs2QW0rVXg2aTh1eGNCb2JobTBVc2tsOHQ4bU1jYVNnbDhTTUJMdWg1c2ErK1NZWnN0ZnlLMDFXdUpQa1I1NVRoSlJkRFhDVVNNc2gyR3l3NnhNTVpINk1yanF6Y3JrcEk0PSIsImFtciI6WyJwd2QiLCJtZmEiXSwiYXBwX2Rpc3BsYXluYW1lIjoiR3JhcGggRXhwbG9yZXIiLCJhcHBpZCI6ImRlOGJjOGI1LWQ5ZjktNDhiMS1hOGFkLWI3NDhkYTcyNTA2NCIsImFwcGlkYWNyIjoiMCIsImZhbWlseV9uYW1lIjoiMjBCSVMwMDciLCJnaXZlbl9uYW1lIjoiQWtzaGF5IFMiLCJpZHR5cCI6InVzZXIiLCJpcGFkZHIiOiIxMDMuMTE0LjI1MS4xOTkiLCJuYW1lIjoiQWtzaGF5IFMgLiAyMEJJUzAwNyIsIm9pZCI6IjgyYjI0NDFmLTQ4NDktNGZkZi1hN2Y0LTY3ZjVjOGE1NWRiYiIsInBsYXRmIjoiNSIsInB1aWQiOiIxMDAzMjAwMEY1NEM1MkExIiwicmgiOiIwLkFVb0Fsb0tMYV8tOTJFcVRyWVM4dnpoQzlRTUFBQUFBQUFBQXdBQUFBQUFBQUFCS0FOZy4iLCJzY3AiOiJDYWxlbmRhcnMuUmVhZCBDYWxlbmRhcnMuUmVhZC5TaGFyZWQgQ2FsZW5kYXJzLlJlYWRCYXNpYyBDYWxlbmRhcnMuUmVhZFdyaXRlIENoYW5uZWwuUmVhZEJhc2ljLkFsbCBDaGFubmVsU2V0dGluZ3MuUmVhZC5BbGwgQ2hhdC5SZWFkIENoYXQuUmVhZEJhc2ljIENoYXQuUmVhZFdyaXRlIERpcmVjdG9yeS5BY2Nlc3NBc1VzZXIuQWxsIERpcmVjdG9yeS5SZWFkLkFsbCBEaXJlY3RvcnkuUmVhZFdyaXRlLkFsbCBFZHVBc3NpZ25tZW50cy5SZWFkIEVkdUFzc2lnbm1lbnRzLlJlYWRCYXNpYyBFZHVBc3NpZ25tZW50cy5SZWFkV3JpdGUgRWR1QXNzaWdubWVudHMuUmVhZFdyaXRlQmFzaWMgRWR1Um9zdGVyLlJlYWRCYXNpYyBGaWxlcy5SZWFkIEZpbGVzLlJlYWQuQWxsIEZpbGVzLlJlYWRXcml0ZSBGaWxlcy5SZWFkV3JpdGUuQWxsIEdyb3VwLlJlYWQuQWxsIEdyb3VwLlJlYWRXcml0ZS5BbGwgTWFpbC5SZWFkIE1haWwuUmVhZEJhc2ljIE1haWwuUmVhZFdyaXRlIG9wZW5pZCBPcmdDb250YWN0LlJlYWQuQWxsIFBlb3BsZS5SZWFkIFBlb3BsZS5SZWFkLkFsbCBQcmVzZW5jZS5SZWFkIFByZXNlbmNlLlJlYWQuQWxsIHByb2ZpbGUgU2l0ZXMuUmVhZFdyaXRlLkFsbCBUYXNrcy5SZWFkIFRhc2tzLlJlYWRXcml0ZSBUZWFtTWVtYmVyLlJlYWQuQWxsIFVzZXIuUmVhZCBVc2VyLlJlYWRXcml0ZSBVc2VyLlJlYWRXcml0ZS5BbGwgVXNlckFjdGl2aXR5LlJlYWRXcml0ZS5DcmVhdGVkQnlBcHAgZW1haWwiLCJzaWduaW5fc3RhdGUiOlsia21zaSJdLCJzdWIiOiJjVVVTUmxPNjZUNE81Q193Qnl1NzVHekctNzRDOWpCcV8yYWRPVUkxRmVvIiwidGVuYW50X3JlZ2lvbl9zY29wZSI6IkFTIiwidGlkIjoiNmI4YjgyOTYtYmRmZi00YWQ4LTkzYWQtODRiY2JmMzg0MmY1IiwidW5pcXVlX25hbWUiOiJha3NoYXkuMjBpc0BrY3QuYWMuaW4iLCJ1cG4iOiJha3NoYXkuMjBpc0BrY3QuYWMuaW4iLCJ1dGkiOiI4QWV4cUF0dEJrcTJmU1ZOT3YwMkFBIiwidmVyIjoiMS4wIiwid2lkcyI6WyJjZjFjMzhlNS0zNjIxLTQwMDQtYTdjYi04Nzk2MjRkY2VkN2MiLCJmMjhhMWY1MC1mNmU3LTQ1NzEtODE4Yi02YTEyZjJhZjZiNmMiLCI2OTA5MTI0Ni0yMGU4LTRhNTYtYWE0ZC0wNjYwNzViMmE3YTgiLCI5Yjg5NWQ5Mi0yY2QzLTQ0YzctOWQwMi1hNmFjMmQ1ZWE1YzMiLCJiNzlmYmY0ZC0zZWY5LTQ2ODktODE0My03NmIxOTRlODU1MDkiXSwieG1zX2NjIjpbIkNQMSJdLCJ4bXNfc3NtIjoiMSIsInhtc19zdCI6eyJzdWIiOiJxSV9ydXJVQTVRekxDT0ZVTTdCVE05VmZjSnRIdHNDaFZOMFFwaW94UzNJIn0sInhtc190Y2R0IjoxNTg4ODU0NzMxfQ.lZHgL1aMVZxvDh9XiBgJ2SlagVvnN1Q-6ZAVBGwCEgwaXA4mEa9CE8Be4OU4Ht41e7UhAfPtnyHQ76Fh0yO_RT9HXrerLLJzk20otZUJDHrKXxhBmh2BkNwqzPruJ_xUzFVDHRETNfyPjZbmpj29zhgmdL-4YjsbdSpLcGWkp3qpY9DA47Cf4pprSDfOOanjjZCX9_IBC5UeEC2Rdohx9D5uAQVRdm8ZU516K3uJopIy2POHhF0w7ODXiKERZSgUC2lbef2-dqAA7UfHK_H5MvQGxVw_LKa3mbjmlQmXM-aTiVEz4jeCntg2ozJYGWvt5356-Jn1SaR-BIxdbC8KJg"
     if endpoint is None or method is None:
         print("Unable to match query to API.")
         return
@@ -72,7 +152,6 @@ def call_api(endpoint, method, body=None):
     # Make API call
     if method == 'GET':
         headers = {'Authorization': 'Bearer ' + access_token}
-        # print("hello, world!")
         print("endpoint",endpoint)
         response = requests.get(endpoint, headers=headers)
         return response.json()
@@ -94,14 +173,9 @@ def call_api(endpoint, method, body=None):
         print("API call failed.")
         return
 
-
-# Example functions for sending and receiving messages in a chat interface
+# Example function for sending messages to the user (replace this with your method of sending messages)
 def send_message_to_user(message):
-    print("Bot: " + message)  # Replace this with your method of sending messages to the user
-
-def receive_message_from_user():
-    return input("User: ")  # Replace this with your method of receiving messages from the user
-
+    print("Bot:", message)
 
 def apiMapping(message):
     user_query = message
@@ -110,9 +184,7 @@ def apiMapping(message):
     api_endpoint, http_method = match_query_to_api(method_keyword, main_keyword, id_value)
     # If the method is POST and the main keyword is 'new task', prompt the user for a task body
     if http_method == 'POST' and main_keyword == 'new task':
-        send_message_to_user("Please enter the task body:")
-        task_body = receive_message_from_user()  # This function should handle receiving messages from the user
-        body = {'title': task_body}  # Construct the request body
+        task_body = receive_message_from_user(message)  # This function should handle receiving messages from the user
         body = {'title': task_body}  # Construct the request body
         resp = call_api(api_endpoint, http_method, body=body)  # Pass the body to the call_api function
     else:
